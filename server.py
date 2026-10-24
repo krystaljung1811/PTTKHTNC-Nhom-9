@@ -16,8 +16,52 @@ from seed_data import seed
 init_database()
 seed()
 
+def ensure_fleet(db: Session):
+    depot = db.query(Depot).first()
+    if not depot:
+        return
+    vehicles = db.query(Vehicle).all()
+    if len(vehicles) == 0:
+        v1 = Vehicle(
+            depot_id=depot.depot_id,
+            license_plate="99C-888.88",
+            capacity_tons=5.0,
+            driver_name="Xe chính (Đội Cơ giới 01)",
+            status="IDLE"
+        )
+        v2 = Vehicle(
+            depot_id=depot.depot_id,
+            license_plate="99C-999.99",
+            capacity_tons=5.0,
+            driver_name="Xe dự phòng (Đội Cứu trợ 02)",
+            status="STANDBY"
+        )
+        db.add_all([v1, v2])
+        db.commit()
+    elif len(vehicles) == 1:
+        v1 = vehicles[0]
+        if "dự phòng" not in v1.driver_name.lower():
+            v1.driver_name = "Xe chính (Đội Cơ giới 01)"
+            v1.license_plate = "99C-888.88"
+        v2 = Vehicle(
+            depot_id=depot.depot_id,
+            license_plate="99C-999.99",
+            capacity_tons=5.0,
+            driver_name="Xe dự phòng (Đội Cứu trợ 02)",
+            status="STANDBY"
+        )
+        db.add(v2)
+        db.commit()
+
+with SessionLocal() as init_db:
+    ensure_fleet(init_db)
+
+import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+
 app = FastAPI(title="Smart Waste CPS - Digital Twin Platform")
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 
 def get_db():
@@ -151,7 +195,8 @@ def empty_bin_actuator(payload: ActuationPayload, db: Session = Depends(get_db))
 
 @app.post("/api/fleet/auto-dispatch")
 def auto_dispatch_fleet(db: Session = Depends(get_db)):
-    """Kích hoạt xe gom rác tự động giải phóng toàn bộ các thùng khẩn cấp"""
+    """Kích hoạt xe gom rác tự động giải phóng toàn bộ các thùng khẩn cấp (có hỗ trợ xe dự phòng)"""
+    ensure_fleet(db)
     bins = db.query(SmartBin).all()
     urgent_bins = []
 
@@ -168,9 +213,23 @@ def auto_dispatch_fleet(db: Session = Depends(get_db)):
     if not urgent_bins:
         return {"status": "NO_ACTION", "message": "Không có điểm rác nào cần thu gom."}
 
-    vehicle = db.query(Vehicle).first()
-    if vehicle:
-        vehicle.status = "EN_ROUTE"
+    vehicles = db.query(Vehicle).all()
+    primary_truck = next((v for v in vehicles if "888" in v.license_plate or "chính" in v.driver_name.lower()), vehicles[0] if vehicles else None)
+    backup_truck = next((v for v in vehicles if "999" in v.license_plate or "dự phòng" in v.driver_name.lower()), vehicles[1] if len(vehicles) > 1 else None)
+
+    # Cơ chế Failover: Chọn xe khả dụng
+    if primary_truck and primary_truck.status not in ["BREAKDOWN", "MAINTENANCE", "OFF_DUTY"]:
+        dispatched_truck = primary_truck
+        is_backup = False
+    elif backup_truck:
+        dispatched_truck = backup_truck
+        is_backup = True
+    else:
+        dispatched_truck = primary_truck
+        is_backup = False
+
+    if dispatched_truck:
+        dispatched_truck.status = "EN_ROUTE"
         db.commit()
 
     # Reset toàn bộ các thùng đầy về 0%
@@ -188,19 +247,23 @@ def auto_dispatch_fleet(db: Session = Depends(get_db)):
         )
         db.add(log)
 
-    if vehicle:
-        vehicle.status = "IDLE"
+    if dispatched_truck:
+        dispatched_truck.status = "IDLE" if not is_backup else "STANDBY"
     db.commit()
 
+    truck_label = f"Xe dự phòng ({dispatched_truck.license_plate})" if is_backup else f"Xe chính ({dispatched_truck.license_plate})"
     return {
         "status": "SUCCESS",
         "cleared_bins_count": len(urgent_bins),
-        "message": f"Xe đã hoàn thành thu gom {len(urgent_bins)} thùng rác khẩn cấp!"
+        "dispatched_vehicle": truck_label,
+        "is_backup": is_backup,
+        "message": f"{truck_label} đã hoàn thành thu gom {len(urgent_bins)} thùng rác khẩn cấp!"
     }
 
 
 @app.get("/api/dashboard/state")
 def get_dashboard_state(db: Session = Depends(get_db)):
+    ensure_fleet(db)
     depot = db.query(Depot).first()
     bins = db.query(SmartBin).all()
 
@@ -238,13 +301,38 @@ def get_dashboard_state(db: Session = Depends(get_db)):
 
     route_result = compute_route(depot, urgent_bins)
 
-    vehicle_obj = db.query(Vehicle).first()
+    vehicles = db.query(Vehicle).all()
+    primary_truck = next((v for v in vehicles if "888" in v.license_plate or "chính" in v.driver_name.lower()), vehicles[0] if vehicles else None)
+    backup_truck = next((v for v in vehicles if "999" in v.license_plate or "dự phòng" in v.driver_name.lower()), vehicles[1] if len(vehicles) > 1 else None)
+
+    # Đánh giá cơ chế chuyển mạch dự phòng (Failover)
+    failover_active = False
+    if primary_truck and primary_truck.status in ["BREAKDOWN", "MAINTENANCE"]:
+        active_truck = backup_truck if backup_truck else primary_truck
+        failover_active = True
+    else:
+        active_truck = primary_truck if primary_truck else (backup_truck if backup_truck else None)
+
+    fleet_info = [
+        {
+            "vehicle_id": v.vehicle_id,
+            "license_plate": v.license_plate,
+            "driver_name": v.driver_name,
+            "capacity_tons": v.capacity_tons,
+            "status": v.status,
+            "is_primary": (v == primary_truck),
+            "is_active": (v == active_truck)
+        }
+        for v in vehicles
+    ]
+
     vehicle_info = {
-        "vehicle_id": vehicle_obj.vehicle_id if vehicle_obj else 1,
-        "license_plate": vehicle_obj.license_plate if vehicle_obj else "99C-888.88",
-        "capacity_tons": vehicle_obj.capacity_tons if vehicle_obj else 5.0,
-        "driver_name": vehicle_obj.driver_name if vehicle_obj else "Đội Cơ giới 01",
-        "status": vehicle_obj.status if vehicle_obj else "IDLE"
+        "vehicle_id": active_truck.vehicle_id if active_truck else 1,
+        "license_plate": active_truck.license_plate if active_truck else "99C-888.88",
+        "capacity_tons": active_truck.capacity_tons if active_truck else 5.0,
+        "driver_name": active_truck.driver_name if active_truck else "Xe chính (Đội Cơ giới 01)",
+        "status": active_truck.status if active_truck else "IDLE",
+        "is_backup": failover_active
     }
 
     # Lấy số liệu thống kê lũy kế từ bảng collection_routes
@@ -270,6 +358,8 @@ def get_dashboard_state(db: Session = Depends(get_db)):
         "depot": {"name": depot.name, "lat": depot.latitude, "lng": depot.longitude},
         "bins": bin_data,
         "vehicle": vehicle_info,
+        "fleet": fleet_info,
+        "failover_active": failover_active,
         "urgent_count": len(urgent_bins),
         "route": route_result,
         "cumulative_stats": cumulative_stats
@@ -279,13 +369,16 @@ def get_dashboard_state(db: Session = Depends(get_db)):
 class CompleteRoutePayload(BaseModel):
     total_distance_km: float
     cleared_bins_count: int
+    vehicle_id: int | None = None
 
 
 @app.post("/api/fleet/complete-route")
 def complete_route_record(payload: CompleteRoutePayload, db: Session = Depends(get_db)):
     """Ghi nhận chuyến thu gom đã hoàn tất vào CSDL để tổng hợp số liệu lũy kế"""
-    vehicle = db.query(Vehicle).first()
-    vehicle_id = vehicle.vehicle_id if vehicle else 1
+    vehicle_id = payload.vehicle_id
+    if not vehicle_id:
+        vehicle = db.query(Vehicle).first()
+        vehicle_id = vehicle.vehicle_id if vehicle else 1
 
     # Ước tính nhiên liệu tiêu thụ cho chuyến này (0.28 L/km)
     fuel_est = round(payload.total_distance_km * 0.28, 2)
@@ -301,6 +394,43 @@ def complete_route_record(payload: CompleteRoutePayload, db: Session = Depends(g
     db.commit()
 
     return {"status": "SUCCESS", "message": "Đã lưu lịch sử chuyến đi thành công!"}
+
+
+@app.post("/api/fleet/breakdown-toggle")
+def toggle_primary_vehicle_breakdown(db: Session = Depends(get_db)):
+    """Kích hoạt / Khắc phục sự cố giả lập hỏng máy trên Xe chính (Failover test)"""
+    ensure_fleet(db)
+    vehicles = db.query(Vehicle).all()
+    primary_truck = next((v for v in vehicles if "888" in v.license_plate or "chính" in v.driver_name.lower()), vehicles[0] if vehicles else None)
+    backup_truck = next((v for v in vehicles if "999" in v.license_plate or "dự phòng" in v.driver_name.lower()), vehicles[1] if len(vehicles) > 1 else None)
+
+    if not primary_truck:
+        return JSONResponse(status_code=404, content={"error": "Không tìm thấy xe chính"})
+
+    if primary_truck.status == "BREAKDOWN":
+        # Khắc phục sự cố: phục hồi xe chính
+        primary_truck.status = "IDLE"
+        if backup_truck and backup_truck.status != "EN_ROUTE":
+            backup_truck.status = "STANDBY"
+        db.commit()
+        return {
+            "status": "SUCCESS",
+            "breakdown_active": False,
+            "message": f"✅ Xe chính ({primary_truck.license_plate}) đã được sửa chữa xong, quay lại trạng thái IDLE!",
+            "active_vehicle": primary_truck.license_plate
+        }
+    else:
+        # Kích hoạt hỏng hóc: chuyển giao failover sang xe dự phòng
+        primary_truck.status = "BREAKDOWN"
+        if backup_truck and backup_truck.status == "STANDBY":
+            backup_truck.status = "IDLE"
+        db.commit()
+        return {
+            "status": "SUCCESS",
+            "breakdown_active": True,
+            "message": f"🚨 SỰ CỐ: Xe chính ({primary_truck.license_plate}) bị hỏng hóc! Hệ thống Cyber tự động Failover kích hoạt Xe dự phòng ({backup_truck.license_plate if backup_truck else 'Xe 2'}) tiếp quản!",
+            "active_vehicle": backup_truck.license_plate if backup_truck else "Xe 2"
+        }
 
 
 # ==============================================================================
@@ -417,4 +547,4 @@ def compute_route(depot, urgent_bins):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True, app_dir=BASE_DIR)

@@ -58,7 +58,7 @@ class Vehicle(Base):
     license_plate = Column(String(20), unique=True, nullable=False)
     capacity_tons = Column(Float, default=5.0, nullable=False)
     driver_name = Column(String(100), nullable=False)
-    status = Column(Enum('IDLE', 'EN_ROUTE', 'UNLOADING', 'OFF_DUTY', name="vehicle_status_enum"), default='IDLE')
+    status = Column(Enum('IDLE', 'EN_ROUTE', 'UNLOADING', 'OFF_DUTY', 'STANDBY', 'MAINTENANCE', 'BREAKDOWN', name="vehicle_status_enum"), default='IDLE')
 
     depot = relationship("Depot", back_populates="vehicles")
     routes = relationship("CollectionRoute", back_populates="vehicle")
@@ -88,8 +88,9 @@ class RouteWaypoint(Base):
 
     route = relationship("CollectionRoute", back_populates="waypoints")
     bin = relationship("SmartBin", back_populates="waypoints")
-
-DB_FILE = "smart_waste_cps.db"
+import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_FILE = os.path.join(BASE_DIR, "smart_waste_cps.db")
 engine = create_engine(f"sqlite:///{DB_FILE}?check_same_thread=False", echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

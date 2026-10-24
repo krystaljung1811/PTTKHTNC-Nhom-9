@@ -20,15 +20,22 @@ def seed():
     db.commit()
     db.refresh(depot)
 
-    # Khởi tạo Xe gom rác
-    truck = Vehicle(
+    # Khởi tạo Đội xe: Xe chính (Truck 1) & Xe dự phòng (Truck 2)
+    truck_primary = Vehicle(
         depot_id=depot.depot_id,
         license_plate="99C-888.88",
         capacity_tons=5.0,
-        driver_name="Đội Cơ giới 01",
+        driver_name="Xe chính (Đội Cơ giới 01)",
         status="IDLE"
     )
-    db.add(truck)
+    truck_backup = Vehicle(
+        depot_id=depot.depot_id,
+        license_plate="99C-999.99",
+        capacity_tons=5.0,
+        driver_name="Xe dự phòng (Đội Cứu trợ 02)",
+        status="STANDBY"
+    )
+    db.add_all([truck_primary, truck_backup])
 
     # 12 thùng rác bố trí quanh khu vực đô thị
     random.seed(42)

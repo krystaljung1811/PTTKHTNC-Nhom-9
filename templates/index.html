@@ -154,6 +154,13 @@
       border-color: #ef4444;
       color: #f87171;
     }
+    .toggle-chip.active-breakdown {
+      background: rgba(244, 63, 94, 0.25);
+      border-color: #f43f5e;
+      color: #fda4af;
+      box-shadow: 0 0 12px rgba(244, 63, 94, 0.4);
+      animation: pulse-pin 1.5s infinite;
+    }
 
     /* TABS */
     .tabs-nav {
@@ -520,6 +527,10 @@
         <div id="btnTraffic" class="toggle-chip" onclick="toggleTrafficJam()">
           <span>🚧</span> <span id="txtTraffic">Tắc Đường: Tắt</span>
         </div>
+
+        <div id="btnBreakdown" class="toggle-chip" onclick="toggleVehicleBreakdown()" title="Nhấn để giả lập Xe 1 bị hỏng hóc đột ngột">
+          <span>🚨</span> <span id="txtBreakdown">Hỏng Xe 1: Tắt</span>
+        </div>
       </div>
 
       <!-- ĐỒNG HỒ TẢI TRỌNG XE THU GOM (CVRP) -->
@@ -530,6 +541,32 @@
         </div>
         <div class="progress-track" style="height:6px; background:#0f172a;">
           <div id="sideTruckLoadBar" class="progress-fill" style="width:0%; background:#38bdf8;"></div>
+        </div>
+      </div>
+
+      <!-- QUẢN LÝ ĐỘI XE & DỰ PHÒNG (N+1 FLEET FAILOVER) -->
+      <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:8px 12px; display:flex; flex-direction:column; gap:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+          <span style="color:var(--text-muted); font-weight:700;">🚒 ĐỘI XE DỰ PHÒNG (N+1):</span>
+          <span id="failoverStatusBadge" style="font-size:9.5px; font-weight:800; padding:2px 6px; border-radius:4px; background:rgba(16,185,129,0.2); color:#34d399;">ỔN ĐỊNH</span>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; font-size:11px;">
+          <div id="cardTruck1" style="background:#0f172a; border:1px solid #334155; border-radius:6px; padding:6px 8px; transition:0.2s;">
+            <div style="font-weight:700; color:#fff; display:flex; align-items:center; gap:4px; font-size:11px;">
+              <span id="dotTruck1" style="width:7px; height:7px; border-radius:50%; background:#10b981;"></span>
+              <span>Xe 1 (Chính)</span>
+            </div>
+            <div style="font-size:9.5px; color:#94a3b8; font-family:'JetBrains Mono',monospace;">99C-888.88</div>
+            <div id="statusTruck1" style="font-size:10px; font-weight:700; color:#38bdf8; margin-top:2px;">IDLE</div>
+          </div>
+          <div id="cardTruck2" style="background:#0f172a; border:1px solid #334155; border-radius:6px; padding:6px 8px; transition:0.2s;">
+            <div style="font-weight:700; color:#fff; display:flex; align-items:center; gap:4px; font-size:11px;">
+              <span id="dotTruck2" style="width:7px; height:7px; border-radius:50%; background:#64748b;"></span>
+              <span>Xe 2 (Dự phòng)</span>
+            </div>
+            <div style="font-size:9.5px; color:#94a3b8; font-family:'JetBrains Mono',monospace;">99C-999.99</div>
+            <div id="statusTruck2" style="font-size:10px; font-weight:700; color:#94a3b8; margin-top:2px;">STANDBY</div>
+          </div>
         </div>
       </div>
     </div>
@@ -625,6 +662,11 @@
     <!-- Floating HUD Overlay -->
     <div class="floating-hud">
       <div class="hud-item">
+        <span class="hud-label">Xe thực thi</span>
+        <span class="hud-value" id="hudActiveVehicle" style="color:#38bdf8;">Xe 1 (99C-888.88)</span>
+      </div>
+      <div style="width:1px; height:24px; background:var(--border);"></div>
+      <div class="hud-item">
         <span class="hud-label">Trạng thái xe</span>
         <span class="hud-value" id="hudTruckStatus" style="color:var(--warning);">IDLE</span>
       </div>
@@ -711,10 +753,20 @@
     });
 
     const truckIcon = L.divIcon({
-      html: '<div style="background:#facc15;color:#000;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 16px #facc15;border:2px solid #fff;">🚚</div>',
+      html: '<div style="background:#facc15;color:#000;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 16px #facc15;border:2px solid #fff;" title="Xe chính 99C-888.88">🚚</div>',
       className: '',
       iconSize: [34, 34]
     });
+
+    const backupTruckIcon = L.divIcon({
+      html: '<div style="background:#0284c7;color:#fff;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 16px #0284c7;border:2px solid #fff;" title="Xe dự phòng 99C-999.99">🚒</div>',
+      className: '',
+      iconSize: [34, 34]
+    });
+
+    let currentActiveVehicleId = 1;
+    let currentActivePlate = "99C-888.88";
+    let isFailoverActive = false;
 
     function logMsg(msg) {
       const box = document.getElementById('cpsLogs');
@@ -746,6 +798,18 @@
         logMsg("⚠️ [VẬT LÝ] Đã kích hoạt ÙN TẮC GIAO THÔNG! Cyber đang tái tính toán lộ trình tránh điểm nghẽn...");
       } else {
         logMsg("✅ [VẬT LÝ] Giao thông đã thông suốt. Lộ trình tối ưu bình thường.");
+      }
+      fetchDashboardData();
+    }
+
+    // TOGGLE VEHICLE BREAKDOWN (FAILOVER TEST)
+    async function toggleVehicleBreakdown() {
+      const res = await fetch('/api/fleet/breakdown-toggle', { method: 'POST' });
+      const d = await res.json();
+      if (d.breakdown_active) {
+        logMsg("🚨 [SỰ CỐ VẬT LÝ] Xe chính (99C-888.88) bị hỏng máy! Kích hoạt Failover chuyển quyền sang Xe dự phòng (99C-999.99)!");
+      } else {
+        logMsg("✅ [KHẮC PHỤC] Xe chính (99C-888.88) đã sửa xong! Hệ thống phục hồi trạng thái bình thường.");
       }
       fetchDashboardData();
     }
@@ -801,14 +865,104 @@
           }
         }
 
+        // 3b. Cập nhật Đội xe & Chuyển giao dự phòng (Failover)
+        isFailoverActive = data.failover_active || false;
+        if (data.vehicle) {
+          currentActiveVehicleId = data.vehicle.vehicle_id;
+          currentActivePlate = data.vehicle.license_plate;
+        }
+
+        const btnB = document.getElementById('btnBreakdown');
+        const txtB = document.getElementById('txtBreakdown');
+        const badgeF = document.getElementById('failoverStatusBadge');
+
+        if (btnB && txtB && badgeF) {
+          if (isFailoverActive) {
+            btnB.classList.add('active-breakdown');
+            txtB.innerText = 'Hỏng Xe 1: BẬT';
+            badgeF.innerText = '🚨 FAILOVER: XE 2 THAY THẾ';
+            badgeF.style.background = 'rgba(244, 63, 94, 0.2)';
+            badgeF.style.color = '#f43f5e';
+          } else {
+            btnB.classList.remove('active-breakdown');
+            txtB.innerText = 'Hỏng Xe 1: Tắt';
+            badgeF.innerText = 'ỔN ĐỊNH';
+            badgeF.style.background = 'rgba(16, 185, 129, 0.2)';
+            badgeF.style.color = '#34d399';
+          }
+        }
+
+        // Cập nhật card trạng thái từng xe
+        if (data.fleet) {
+          const t1 = data.fleet.find(v => v.is_primary || (v.license_plate && v.license_plate.includes('888')));
+          const t2 = data.fleet.find(v => !v.is_primary || (v.license_plate && v.license_plate.includes('999')));
+
+          if (t1) {
+            const st1 = document.getElementById('statusTruck1');
+            const dot1 = document.getElementById('dotTruck1');
+            const card1 = document.getElementById('cardTruck1');
+            if (st1) st1.innerText = t1.status;
+            if (dot1 && card1) {
+              if (t1.status === 'BREAKDOWN') {
+                dot1.style.background = '#f43f5e';
+                if (st1) st1.style.color = '#f43f5e';
+                card1.style.borderColor = '#f43f5e';
+                card1.style.boxShadow = '0 0 10px rgba(244, 63, 94, 0.3)';
+              } else if (t1.status === 'EN_ROUTE') {
+                dot1.style.background = '#38bdf8';
+                if (st1) st1.style.color = '#38bdf8';
+                card1.style.borderColor = '#38bdf8';
+                card1.style.boxShadow = 'none';
+              } else {
+                dot1.style.background = '#10b981';
+                if (st1) st1.style.color = '#38bdf8';
+                card1.style.borderColor = '#334155';
+                card1.style.boxShadow = 'none';
+              }
+            }
+          }
+
+          if (t2) {
+            const st2 = document.getElementById('statusTruck2');
+            const dot2 = document.getElementById('dotTruck2');
+            const card2 = document.getElementById('cardTruck2');
+            if (st2) st2.innerText = t2.status;
+            if (dot2 && card2) {
+              if (t2.status === 'EN_ROUTE') {
+                dot2.style.background = '#38bdf8';
+                if (st2) st2.style.color = '#38bdf8';
+                card2.style.borderColor = '#38bdf8';
+              } else if (t2.status === 'IDLE') {
+                dot2.style.background = '#10b981';
+                if (st2) st2.style.color = '#10b981';
+                card2.style.borderColor = '#10b981';
+              } else {
+                dot2.style.background = '#64748b';
+                if (st2) st2.style.color = '#94a3b8';
+                card2.style.borderColor = '#334155';
+              }
+            }
+          }
+        }
+
+        // Cập nhật HUD Xe đang điều phối
+        const hudV = document.getElementById('hudActiveVehicle');
+        if (hudV && data.vehicle) {
+          hudV.innerText = `${isFailoverActive ? 'Xe 2 Dự phòng' : 'Xe 1'} (${data.vehicle.license_plate})`;
+          hudV.style.color = isFailoverActive ? '#f59e0b' : '#38bdf8';
+        }
+
         // 4. Depot & Truck Markers
         if (!depotMarker) {
           depotMarker = L.marker([data.depot.lat, data.depot.lng], { icon: depotIcon }).addTo(map);
           depotMarker.bindPopup(`<b>${data.depot.name}</b><br>Trạm xe trung tâm`);
         }
 
+        const chosenTruckIcon = isFailoverActive ? backupTruckIcon : truckIcon;
         if (!truckMarker) {
-          truckMarker = L.marker([data.depot.lat, data.depot.lng], { icon: truckIcon, zIndexOffset: 1000 }).addTo(map);
+          truckMarker = L.marker([data.depot.lat, data.depot.lng], { icon: chosenTruckIcon, zIndexOffset: 1000 }).addTo(map);
+        } else {
+          truckMarker.setIcon(chosenTruckIcon);
         }
 
         currentWaypoints = data.route.waypoints || [];
@@ -1001,7 +1155,8 @@
       document.getElementById('txtDispatch').innerText = "ĐANG THU GOM RÁC...";
       document.getElementById('hudTruckStatus').innerText = "EN_ROUTE";
       document.getElementById('hudTruckStatus').style.color = "#38bdf8";
-      logMsg("🚀 Xe thu gom xuất phát từ Depot, lăn bánh theo tuyến 2-Opt!");
+      const movingVehicleName = isFailoverActive ? "Xe dự phòng (99C-999.99)" : "Xe chính (99C-888.88)";
+      logMsg(`🚀 ${movingVehicleName} xuất phát từ Depot, lăn bánh theo tuyến 2-Opt!`);
 
       let currentPos = truckMarker.getLatLng();
 
@@ -1101,15 +1256,16 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             total_distance_km: completedDist,
-            cleared_bins_count: collectedBins
+            cleared_bins_count: collectedBins,
+            vehicle_id: currentActiveVehicleId
           })
         });
-        logMsg(`📈 Đã ghi nhận chuyến đi (${completedDist} km) vào CSDL lũy kế!`);
+        logMsg(`📈 Đã ghi nhận chuyến đi (${completedDist} km) của ${movingVehicleName} vào CSDL lũy kế!`);
       } catch (err) {
         console.error("Lỗi ghi nhận lộ trình:", err);
       }
 
-      logMsg(`🏁 Xe đã hoàn thành toàn bộ lộ trình và quay trở về Depot an toàn! Trút toàn bộ ${currentTruckLoad.toFixed(2)} tấn rác vào bãi tập kết.`);
+      logMsg(`🏁 ${movingVehicleName} đã hoàn thành toàn bộ lộ trình và quay trở về Depot an toàn! Trút toàn bộ ${currentTruckLoad.toFixed(2)} tấn rác vào bãi tập kết.`);
       updatePayloadUI(0.0);
 
       document.getElementById('hudTruckStatus').innerText = "IDLE";
