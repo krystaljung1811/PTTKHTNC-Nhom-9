@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Waste CPS - Trung Tâm Điều Hành Số</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root {
+      --bg-base: #090d16;
+      --bg-panel: rgba(15, 23, 42, 0.92);
+      --bg-card: rgba(30, 41, 59, 0.7);
+      --border: rgba(51, 65, 85, 0.6);
+      --border-accent: rgba(56, 189, 248, 0.3);
+      --primary: #0284c7;
+      --primary-hover: #0369a1;
+      --accent: #38bdf8;
+      --urgent: #f43f5e;
+      --urgent-bg: rgba(244, 63, 94, 0.12);
+      --success: #10b981;
+      --success-bg: rgba(16, 185, 129, 0.12);
+      --warning: #f59e0b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
+    body { display: flex; height: 100vh; overflow: hidden; background: var(--bg-base); color: var(--text); }
+
+    /* CUSTOM THIN SCROLLBAR */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    /* SIDEBAR LAYOUT */
+    #sidebar {
+      width: 440px;
+      min-width: 440px;
+      height: 100vh;
+      background: var(--bg-panel);
+      backdrop-filter: blur(16px);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      z-index: 1000;
+      box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+    }
+
+    /* HEADER */
+    .sidebar-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(15, 23, 42, 0.95);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-icon {
+      width: 34px;
+      height: 34px;
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 16px rgba(2, 132, 199, 0.4);
+    }
+    .brand-title {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #fff;
+    }
+    .brand-subtitle {
+      font-size: 10px;
+      color: var(--accent);
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+
+    /* CONTROL PANEL (ACTION BAR) */
+    .control-panel {
+      padding: 14px 20px;
+      background: rgba(15, 23, 42, 0.5);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .btn-main-dispatch {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .btn-main-dispatch:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(2, 132, 199, 0.5);
+    }
+    .btn-main-dispatch:disabled {
+      background: #334155;
+      color: #64748b;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .toggles-row {
+      display: flex;
+      gap: 8px;
+    }
+    .toggle-chip {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.2s;
+    }
+    .toggle-chip:hover { border-color: var(--accent); }
+    .toggle-chip.active-traffic {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: #ef4444;
+      color: #f87171;
+    }
+
+    /* TABS */
+    .tabs-nav {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.8);
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 11px 8px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 11.5px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { color: #fff; }
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      background: rgba(56, 189, 248, 0.05);
+    }
+
+    /* TAB CONTENT WRAPPER (CRITICAL FOR SCROLLING) */
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+      display: none;
+    }
+    .tab-content.active {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* SUMMARY MINI-CARDS */
+    .metrics-summary {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .metric-mini {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .metric-mini.accent { border-left: 3px solid var(--accent); }
+    .metric-mini.urgent { border-left: 3px solid var(--urgent); }
+    .metric-mini-title { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
+    .metric-mini-val { font-size: 18px; font-weight: 800; color: #fff; }
+
+    /* FILTER PILLS */
+    .filter-pills {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .filter-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 10.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .filter-btn.active, .filter-btn:hover {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    /* BIN ITEM CARD */
+    .bin-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .bin-card:hover {
+      border-color: rgba(56, 189, 248, 0.4);
+      background: rgba(30, 41, 59, 0.9);
+    }
+    .bin-card.urgent {
+      background: var(--urgent-bg);
+      border-color: rgba(244, 63, 94, 0.4);
+      box-shadow: 0 0 14px rgba(244, 63, 94, 0.1);
+    }
+    .bin-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .bin-card-title {
+      font-weight: 700;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .badge-urgent {
+      background: #f43f5e;
+      color: #fff;
+      font-size: 9.5px;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+    .badge-normal {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      font-size: 9.5px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* PROGRESS BAR */
+    .progress-track {
+      width: 100%;
+      height: 6px;
+      background: rgba(15, 23, 42, 0.8);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.4s ease;
+    }
+
+    .bin-card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .btn-actuate-small {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 10.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .btn-actuate-small:hover {
+      background: #f43f5e;
+      border-color: #f43f5e;
+      color: #fff;
+    }
+    .btn-clean-small {
+      background: transparent;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 10.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .btn-clean-small:hover {
+      background: #10b981;
+      color: #fff;
+    }
+
+    /* ANALYTICS TAB STYLING */
+    .analytics-hero {
+      background: linear-gradient(135deg, rgba(30, 58, 138, 0.4), rgba(15, 23, 42, 0.8));
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+      font-size: 12px;
+    }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-val { font-weight: 800; font-size: 14px; }
+
+    /* TERMINAL LOG TAB */
+    .terminal-container {
+      flex: 1;
+      min-height: 380px;
+      background: #020617;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #38bdf8;
+      overflow-y: auto;
+      line-height: 1.6;
+    }
+
+    /* MAP CONTAINER */
+    #map { flex: 1; height: 100%; position: relative; }
+
+    /* FLOATING STATUS HUD ON MAP */
+    .floating-hud {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 1000;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      font-size: 12px;
+    }
+    .hud-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .hud-label { font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; }
+    .hud-value { font-weight: 800; color: #fff; font-size: 13px; }
+
+    /* CUSTOM MAP PIN WITH ID & % DIRECTLY VISIBLE ON MAP */
+    .bin-map-pin {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+    }
+    .bin-pin-circle {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #10b981;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 800;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
+      transition: all 0.2s;
+    }
+    .bin-pin-badge {
+      background: rgba(15, 23, 42, 0.95);
+      color: #34d399;
+      font-size: 9px;
+      font-weight: 800;
+      padding: 1px 4px;
+      border-radius: 4px;
+      margin-top: -4px;
+      border: 1px solid #10b981;
+      white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+    .bin-map-pin.urgent .bin-pin-circle {
+      background: #f43f5e;
+      border-color: #ffffff;
+      box-shadow: 0 0 16px rgba(244, 63, 94, 0.95);
+      animation: pulse-pin 1.2s infinite;
+    }
+    .bin-map-pin.urgent .bin-pin-badge {
+      color: #ff6b81;
+      border-color: #f43f5e;
+    }
+    /* LEAFLET CONTROL LAYERS DARK STYLE */
+    .leaflet-control-layers {
+      background: rgba(15, 23, 42, 0.9) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 8px !important;
+      color: #f8fafc !important;
+      font-size: 11.5px !important;
+      font-weight: 600 !important;
+      backdrop-filter: blur(10px) !important;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
+      padding: 6px 10px !important;
+    }
+    .leaflet-control-layers-toggle {
+      filter: invert(1) hue-rotate(180deg);
+    }
+    .leaflet-control-layers label {
+      margin-bottom: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    @keyframes pulse-pin {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.15); }
+      100% { transform: scale(1); }
+    }
+    /* DARK THEME MAP FILTER */
+    .dark-tiles {
+      filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+    }
+  </style>
+
+</head>
+<body>
+
+  <!-- LEFT CONTROL SIDEBAR -->
+  <div id="sidebar">
+    <!-- Header -->
+    <div class="sidebar-header">
+      <div class="brand">
+        <div class="brand-icon">🚛</div>
+        <div>
+          <div class="brand-title">SMART WASTE CPS</div>
+          <div class="brand-subtitle">Digital Twin Control Center</div>
+        </div>
+      </div>
+      <div style="font-size: 11px; color: var(--success); font-weight: 700; display: flex; align-items: center; gap: 4px;">
+        <span style="display:inline-block; width:8px; height:8px; background:var(--success); border-radius:50%; box-shadow:0 0 8px var(--success);"></span>
+        ONLINE
+      </div>
+    </div>
+
+    <!-- Actions & Toggles -->
+    <div class="control-panel">
+      <button id="btnDispatch" class="btn-main-dispatch" onclick="startAutonomousFleet()">
+        <span>🚀</span> <span id="txtDispatch">XUẤT XE THU GOM (2-OPT)</span>
+      </button>
+
+      <div class="toggles-row">
+        <label class="toggle-chip">
+          <input type="checkbox" id="chkAutoLoop" checked style="cursor:pointer; accent-color:#0284c7;">
+          <span>Tự Động Vòng Kín</span>
+        </label>
+
+        <div id="btnTraffic" class="toggle-chip" onclick="toggleTrafficJam()">
+          <span>🚧</span> <span id="txtTraffic">Tắc Đường: Tắt</span>
+        </div>
+      </div>
+
+      <!-- ĐỒNG HỒ TẢI TRỌNG XE THU GOM (CVRP) -->
+      <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:8px 12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-bottom:4px;">
+          <span style="color:var(--text-muted); font-weight:700;">🚛 TẢI TRỌNG XE (CVRP):</span>
+          <b id="sideTruckLoadText" style="color:var(--accent);">0.00 / 5.00 Tấn (0%)</b>
+        </div>
+        <div class="progress-track" style="height:6px; background:#0f172a;">
+          <div id="sideTruckLoadBar" class="progress-fill" style="width:0%; background:#38bdf8;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="tabs-nav">
+      <button class="tab-btn active" onclick="switchTab('tab-bins', this)">
+        <span>🗑️</span> Thùng Rác (<span id="tabBinCount">12</span>)
+      </button>
+      <button class="tab-btn" onclick="switchTab('tab-analytics', this)">
+        <span>📊</span> Hiệu Quả Lũy Kế
+      </button>
+      <button class="tab-btn" onclick="switchTab('tab-logs', this)">
+        <span>📜</span> Nhật Ký CPS
+      </button>
+    </div>
+
+    <!-- TAB 1: DANH SÁCH THÙNG RÁC (SCROLLABLE & FILTERABLE) -->
+    <div id="tab-bins" class="tab-content active">
+      <!-- Mini stats -->
+      <div class="metrics-summary">
+        <div class="metric-mini accent">
+          <div class="metric-mini-title">Lộ trình 2-Opt</div>
+          <div class="metric-mini-val" id="totalDist">0.00 km</div>
+        </div>
+        <div class="metric-mini urgent">
+          <div class="metric-mini-title">Điểm khẩn cấp</div>
+          <div class="metric-mini-val" id="urgentCount" style="color:var(--urgent);">0 / 12</div>
+        </div>
+      </div>
+
+      <!-- Filter pills -->
+      <div class="filter-pills">
+        <button class="filter-btn active" onclick="filterBins('ALL', this)">Tất cả (12)</button>
+        <button class="filter-btn" onclick="filterBins('URGENT', this)">Khẩn cấp (≥80%)</button>
+        <button class="filter-btn" onclick="filterBins('NORMAL', this)">Bình thường</button>
+      </div>
+
+      <!-- Danh sách thùng rác được render động tại đây -->
+      <div id="binContainer" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+
+    <!-- TAB 2: PHÂN TÍCH & HIỆU QUẢ LŨY KẾ -->
+    <div id="tab-analytics" class="tab-content">
+      <div class="analytics-hero">
+        <div style="font-size:12px; font-weight:800; color:#93c5fd; text-transform:uppercase; letter-spacing:0.05em;">
+          🌱 BÁO CÁO CẮT GIẢM & KINH TẾ CPS
+        </div>
+        <div class="stat-row">
+          <span style="color:var(--text-muted);">Tổng chuyến đã hoàn tất:</span>
+          <span class="stat-val" id="cumTrips" style="color:#fff;">0 Chuyến</span>
+        </div>
+        <div class="stat-row">
+          <span style="color:var(--text-muted);">Quãng đường CPS tích lũy:</span>
+          <span class="stat-val" id="cumCpsDist" style="color:#38bdf8;">0.0 km</span>
+        </div>
+        <div class="stat-row">
+          <span style="color:var(--text-muted);">Quãng đường tiết kiệm được:</span>
+          <span class="stat-val" id="cumSavedDist" style="color:#34d399;">0.0 km</span>
+        </div>
+        <div class="stat-row">
+          <span style="color:var(--text-muted);">Nhiên liệu Diesel tiết kiệm:</span>
+          <span class="stat-val" id="cumSavedFuel" style="color:#38bdf8;">0.0 L</span>
+        </div>
+        <div class="stat-row">
+          <span style="color:var(--text-muted);">Cắt giảm phát thải CO₂:</span>
+          <span class="stat-val" id="cumSavedCo2" style="color:#4ade80;">0.0 kg CO₂</span>
+        </div>
+      </div>
+
+      <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:14px; font-size:11.5px; line-height:1.6; color:var(--text-muted);">
+        <b style="color:#fff;">Phương pháp luận đánh giá (MBSE / SysML):</b><br>
+        • Lộ trình tĩnh (Baseline): 12 điểm cố định ~ 28.5 km/chuyến.<br>
+        • Lộ trình động CPS: Chỉ gom các điểm khẩn cấp qua thuật toán 2-Opt TSP.<br>
+        • Tiết kiệm trung bình: <b>35% - 50%</b> nhiên liệu vận hành.
+      </div>
+    </div>
+
+    <!-- TAB 3: NHẬT KÝ SỰ KIỆN HỆ THỐNG -->
+    <div id="tab-logs" class="tab-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <span style="font-size:11px; font-weight:700; color:var(--text-muted);">TELEMETRY & DISPATCH FEED</span>
+        <button onclick="document.getElementById('cpsLogs').innerHTML=''" style="background:transparent; border:none; color:var(--accent); font-size:10.5px; cursor:pointer;">Xóa log</button>
+      </div>
+      <div id="cpsLogs" class="terminal-container">
+        [SYS_INIT] Trung tâm điều hành Digital Twin đã khởi động...
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT MAP VIEW -->
+  <div id="map">
+    <!-- Floating HUD Overlay -->
+    <div class="floating-hud">
+      <div class="hud-item">
+        <span class="hud-label">Trạng thái xe</span>
+        <span class="hud-value" id="hudTruckStatus" style="color:var(--warning);">IDLE</span>
+      </div>
+      <div style="width:1px; height:24px; background:var(--border);"></div>
+      <div class="hud-item">
+        <span class="hud-label">Tiết kiệm chuyến</span>
+        <span class="hud-value" id="hudFuelSaved" style="color:var(--success);">0.0%</span>
+      </div>
+      <div style="width:1px; height:24px; background:var(--border);"></div>
+      <div class="hud-item">
+        <span class="hud-label">Tải trọng xe</span>
+        <span class="hud-value" id="hudTruckLoad" style="color:#38bdf8;">0.00 / 5.00 Tấn</span>
+      </div>
+      <div style="width:1px; height:24px; background:var(--border);"></div>
+      <div class="hud-item">
+        <span class="hud-label">Bộ lọc ước lượng</span>
+        <span class="hud-value" style="color:var(--accent);">1D Kalman Filter</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 1. KHỞI TẠO BẢN ĐỒ LEAFLET
+    const map = L.map('map', { zoomControl: false }).setView([21.1860, 106.0763], 14);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // Định nghĩa các nguồn bản đồ ổn định, miễn phí, không watermark và hỗ trợ tiếng Việt
+    // 1. Google Maps Dark Mode (Chế độ Đêm Digital Twin)
+    const googleDark = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      subdomains: ['0', '1', '2', '3'],
+      maxZoom: 20,
+      className: 'dark-tiles',
+      attribution: '&copy; Google Maps'
+    });
+
+    // 2. Google Maps Chuẩn (Đường phố tiếng Việt rõ nét)
+    const googleRoadmap = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+      subdomains: ['0', '1', '2', '3'],
+      maxZoom: 20,
+      attribution: '&copy; Google Maps'
+    });
+
+    // 3. Google Maps Vệ tinh Hybrid (Ảnh chụp vệ tinh + tên đường)
+    const googleHybrid = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+      subdomains: ['0', '1', '2', '3'],
+      maxZoom: 20,
+      attribution: '&copy; Google Maps Satellite'
+    });
+
+    // 4. Esri Dark Canvas (Bản đồ tối công nghiệp)
+    const esriDark = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
+      attribution: '&copy; Esri World Dark Gray'
+    });
+
+    // Mặc định kích hoạt Bản đồ Đường phố Google Sáng Trắng rõ nét, dễ quan sát
+    googleRoadmap.addTo(map);
+
+    // Thêm nút chọn layer ở góc trái dưới
+    const baseMaps = {
+      "☀️ Bản đồ Sáng (Google - Dễ nhìn)": googleRoadmap,
+      "🌙 Bản đồ Tối (Digital Twin)": googleDark,
+      "🛰️ Bản đồ Vệ tinh (Google)": googleHybrid,
+      "🗺️ Bản đồ Tối (Esri Canvas)": esriDark
+    };
+    L.control.layers(baseMaps, null, { position: 'bottomleft' }).addTo(map);
+
+
+    let markers = {};
+    let routePolyline = null;
+    let depotMarker = null;
+    let truckMarker = null;
+    let trafficCircle = null;
+    let currentWaypoints = [];
+    let isFleetMoving = false;
+    let currentFilter = 'ALL';
+    let cachedBinsData = [];
+
+    // ICONS
+    const depotIcon = L.divIcon({
+      html: '<div style="background:#0f172a;color:#38bdf8;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:800;border:2px solid #38bdf8;box-shadow:0 4px 12px rgba(0,0,0,0.6);white-space:nowrap;">🏢 TRẠM DEPOT</div>',
+      className: '',
+      iconSize: [80, 26]
+    });
+
+    const truckIcon = L.divIcon({
+      html: '<div style="background:#facc15;color:#000;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 16px #facc15;border:2px solid #fff;">🚚</div>',
+      className: '',
+      iconSize: [34, 34]
+    });
+
+    function logMsg(msg) {
+      const box = document.getElementById('cpsLogs');
+      const timeStr = new Date().toLocaleTimeString();
+      box.innerHTML = `<div><span style="color:#64748b;">[${timeStr}]</span> ${msg}</div>` + box.innerHTML;
+    }
+
+    // TAB SWITCHER
+    function switchTab(tabId, btn) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+    }
+
+    // FILTER BINS
+    function filterBins(filter, btn) {
+      currentFilter = filter;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderBinsList();
+    }
+
+    // TOGGLE TRAFFIC JAM
+    async function toggleTrafficJam() {
+      const res = await fetch('/api/traffic/toggle', { method: 'POST' });
+      const d = await res.json();
+      if (d.traffic_jam_active) {
+        logMsg("⚠️ [VẬT LÝ] Đã kích hoạt ÙN TẮC GIAO THÔNG! Cyber đang tái tính toán lộ trình tránh điểm nghẽn...");
+      } else {
+        logMsg("✅ [VẬT LÝ] Giao thông đã thông suốt. Lộ trình tối ưu bình thường.");
+      }
+      fetchDashboardData();
+    }
+
+    // FETCH DASHBOARD DATA
+    async function fetchDashboardData() {
+      if (isFleetMoving) return;
+
+      try {
+        const res = await fetch('/api/dashboard/state');
+        const data = await res.json();
+        cachedBinsData = data.bins || [];
+
+        // 1. Cập nhật thẻ chỉ số tức thời
+        document.getElementById('totalDist').innerText = data.route.total_distance_km + ' km';
+        document.getElementById('urgentCount').innerText = data.urgent_count + ' / ' + data.bins.length;
+        document.getElementById('tabBinCount').innerText = data.bins.length;
+        document.getElementById('hudFuelSaved').innerText = data.route.fuel_saved_pct + '%';
+
+        // 2. Cập nhật thống kê lũy kế
+        if (data.cumulative_stats) {
+          document.getElementById('cumTrips').innerText = data.cumulative_stats.total_trips + ' Chuyến';
+          document.getElementById('cumCpsDist').innerText = data.cumulative_stats.total_cps_dist_km + ' km';
+          document.getElementById('cumSavedDist').innerText = data.cumulative_stats.saved_dist_km + ' km';
+          document.getElementById('cumSavedFuel').innerText = data.cumulative_stats.saved_fuel_liters + ' L';
+          document.getElementById('cumSavedCo2').innerText = data.cumulative_stats.saved_co2_kg + ' kg CO₂';
+        }
+
+        // 3. Vùng ùn tắc giao thông (Traffic Jam)
+        const jam = data.route.traffic_jam;
+        const btnT = document.getElementById('btnTraffic');
+        const txtT = document.getElementById('txtTraffic');
+        if (jam && jam.active) {
+          btnT.classList.add('active-traffic');
+          txtT.innerText = 'Tắc Đường: BẬT';
+          if (!trafficCircle) {
+            trafficCircle = L.circle([jam.lat, jam.lng], {
+              radius: jam.radius_km * 1000,
+              color: '#ef4444',
+              fillColor: '#ef4444',
+              fillOpacity: 0.2,
+              weight: 2,
+              dashArray: '6, 6'
+            }).addTo(map);
+            trafficCircle.bindPopup(`<b>🚧 ${jam.name}</b><br>Hệ số cản trở: ${jam.cost_multiplier}x<br>Cyber đang tái lập tuyến tránh.`);
+          }
+        } else {
+          btnT.classList.remove('active-traffic');
+          txtT.innerText = 'Tắc Đường: Tắt';
+          if (trafficCircle) {
+            map.removeLayer(trafficCircle);
+            trafficCircle = null;
+          }
+        }
+
+        // 4. Depot & Truck Markers
+        if (!depotMarker) {
+          depotMarker = L.marker([data.depot.lat, data.depot.lng], { icon: depotIcon }).addTo(map);
+          depotMarker.bindPopup(`<b>${data.depot.name}</b><br>Trạm xe trung tâm`);
+        }
+
+        if (!truckMarker) {
+          truckMarker = L.marker([data.depot.lat, data.depot.lng], { icon: truckIcon, zIndexOffset: 1000 }).addTo(map);
+        }
+
+        currentWaypoints = data.route.waypoints || [];
+
+        // 5. Cập nhật Map markers & Render danh sách thùng rác
+        renderBinsList();
+
+        // 6. Cập nhật trạng thái xe HUD
+        if (!isFleetMoving) {
+          if (data.urgent_count > 0) {
+            document.getElementById('hudTruckStatus').innerText = "SẴN SÀNG";
+            document.getElementById('hudTruckStatus').style.color = "#38bdf8";
+          } else {
+            document.getElementById('hudTruckStatus').innerText = "IDLE";
+            document.getElementById('hudTruckStatus').style.color = "#facc15";
+          }
+        }
+
+        // 7. Vẽ Tuyến đường Polyline
+        if (routePolyline) map.removeLayer(routePolyline);
+        if (currentWaypoints.length > 0) {
+          const latlngs = currentWaypoints.map(wp => [wp.lat, wp.lng]);
+          routePolyline = L.polyline(latlngs, {
+            color: '#ef4444',
+            weight: 3.5,
+            opacity: 0.85,
+            dashArray: '6, 8'
+          }).addTo(map);
+        }
+
+        // 8. TỰ ĐỘNG ĐIỀU PHỐI (CLOSED-LOOP AUTONOMOUS)
+        const autoLoopEnabled = document.getElementById('chkAutoLoop').checked;
+        if (autoLoopEnabled && !isFleetMoving && data.urgent_count >= 1 && currentWaypoints.length > 1) {
+          logMsg(`⚡ [TỰ ĐỘNG] Phát hiện ${data.urgent_count} thùng rác khẩn cấp! Xuất xe thu gom...`);
+          startAutonomousFleet();
+        }
+
+      } catch (err) {
+        console.error("Lỗi fetch dashboard:", err);
+      }
+    }
+
+    let currentTruckLoad = 0.0;
+    const maxCapacityTons = 5.0;
+
+    function updatePayloadUI(loadTons) {
+      currentTruckLoad = Math.max(0.0, Math.min(maxCapacityTons, loadTons));
+      const pct = Math.round((currentTruckLoad / maxCapacityTons) * 100);
+      const str = `${currentTruckLoad.toFixed(2)} / ${maxCapacityTons.toFixed(2)} Tấn (${pct}%)`;
+      const hudStr = `${currentTruckLoad.toFixed(2)} / ${maxCapacityTons.toFixed(2)} Tấn`;
+
+      const hudEl = document.getElementById('hudTruckLoad');
+      if (hudEl) {
+        hudEl.innerText = hudStr;
+        hudEl.style.color = pct >= 90 ? '#f43f5e' : (pct >= 60 ? '#f59e0b' : '#38bdf8');
+      }
+
+      const sideText = document.getElementById('sideTruckLoadText');
+      if (sideText) {
+        sideText.innerText = str;
+        sideText.style.color = pct >= 90 ? '#f43f5e' : (pct >= 60 ? '#f59e0b' : '#38bdf8');
+      }
+
+      const sideBar = document.getElementById('sideTruckLoadBar');
+      if (sideBar) {
+        sideBar.style.width = `${pct}%`;
+        sideBar.style.background = pct >= 90 ? '#f43f5e' : (pct >= 60 ? '#f59e0b' : '#38bdf8');
+      }
+    }
+
+    // RENDER DANH SÁCH THÙNG RÁC & CẬP NHẬT MARKER MAP
+    function renderBinsList() {
+      const container = document.getElementById('binContainer');
+      container.innerHTML = '';
+
+      cachedBinsData.forEach(b => {
+        const isUrgent = b.is_urgent;
+        const color = isUrgent ? '#f43f5e' : '#10b981';
+
+        // TẠO MARKER PIN CÓ HIỂN THỊ SỐ THÙNG VÀ % TRỰC TIẾP TRÊN BẢN ĐỒ
+        const binIcon = L.divIcon({
+          className: '',
+          html: `
+            <div class="bin-map-pin ${isUrgent ? 'urgent' : ''}">
+              <div class="bin-pin-circle">#${b.bin_id < 10 ? '0' + b.bin_id : b.bin_id}</div>
+              <div class="bin-pin-badge">${Math.round(b.fill_pct)}%</div>
+            </div>
+          `,
+          iconSize: [32, 44],
+          iconAnchor: [16, 22]
+        });
+
+        if (!markers[b.bin_id]) {
+          markers[b.bin_id] = L.marker([b.lat, b.lng], { icon: binIcon }).addTo(map);
+        } else {
+          markers[b.bin_id].setIcon(binIcon);
+        }
+
+        markers[b.bin_id].bindPopup(`
+          <div style="font-family:'Plus Jakarta Sans',sans-serif; min-width:180px;">
+            <b style="font-size:13px; color:#fff;">${b.bin_code}</b><br>
+            <div style="font-size:11.5px; color:#94a3b8; margin: 4px 0;">
+              Mức đầy: <b style="color:${color}; font-size:13px;">${b.fill_pct}%</b><br>
+              Khối lượng rác: <b>${b.waste_weight_tons || 0.35} Tấn</b><br>
+              Pin: ${b.battery_v}V (${Math.round(b.battery_mah)} mAh)
+            </div>
+            <button onclick="triggerActuator(${b.bin_id})" style="background:#10b981; color:#fff; border:none; padding:5px 10px; border-radius:4px; font-weight:700; cursor:pointer; width:100%; margin-top:4px;">Xả rỗng ngay</button>
+          </div>
+        `);
+
+        // Áp dụng bộ lọc hiển thị tab
+        if (currentFilter === 'URGENT' && !isUrgent) return;
+        if (currentFilter === 'NORMAL' && isUrgent) return;
+
+        // Render card trong sidebar
+        const card = document.createElement('div');
+        card.className = 'bin-card' + (isUrgent ? ' urgent' : '');
+        card.innerHTML = `
+          <div class="bin-card-header">
+            <div class="bin-card-title">
+              <span>${b.bin_code}</span>
+              ${isUrgent ? '<span class="badge-urgent">Khẩn cấp</span>' : '<span class="badge-normal">Bình thường</span>'}
+            </div>
+            <div style="font-size:13px; font-weight:800; color:${color};">${b.fill_pct}%</div>
+          </div>
+
+          <div class="progress-track">
+            <div class="progress-fill" style="width:${Math.min(100, b.fill_pct)}%; background:${color};"></div>
+          </div>
+
+          <div class="bin-card-footer">
+            <span>⚖️ ${b.waste_weight_tons || 0.35} Tấn • 🔋 ${b.battery_v}V</span>
+            <button class="${isUrgent ? 'btn-actuate-small' : 'btn-clean-small'}" onclick="triggerActuator(${b.bin_id})">
+              ${isUrgent ? 'Thu gom ngay' : 'Xả rác'}
+            </button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // NỘI SUY DI CHUYỂN MƯỢT MÀ (SMOOTH KINEMATICS)
+    function animateMove(fromLatLng, toLatLng, durationMs) {
+      return new Promise(resolve => {
+        const start = performance.now();
+        function frame(now) {
+          const elapsed = now - start;
+          const progress = Math.min(elapsed / durationMs, 1.0);
+          const lat = fromLatLng.lat + (toLatLng.lat - fromLatLng.lat) * progress;
+          const lng = fromLatLng.lng + (toLatLng.lng - fromLatLng.lng) * progress;
+          truckMarker.setLatLng([lat, lng]);
+
+          if (progress < 1.0) {
+            requestAnimationFrame(frame);
+          } else {
+            truckMarker.setLatLng([toLatLng.lat, toLatLng.lng]);
+            resolve();
+          }
+        }
+        requestAnimationFrame(frame);
+      });
+    }
+
+    function calcDistKm(p1, p2) {
+      const dlat = (p1.lat - p2.lat) * 111.0;
+      const dlon = (p1.lng - p2.lng) * 111.0 * Math.cos(p1.lat * Math.PI / 180);
+      return Math.hypot(dlat, dlon);
+    }
+
+    async function triggerActuator(binId) {
+      logMsg(`Gửi tín hiệu Actuation xả rỗng thùng #${binId}...`);
+      await fetch('/api/actuator/empty', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bin_id: binId })
+      });
+      fetchDashboardData();
+    }
+
+    // XE TỰ HÀNH THU GOM VÒNG KÍN (CVRP WITH CAPACITY CONSTRAINT)
+    async function startAutonomousFleet() {
+      if (currentWaypoints.length <= 1) {
+        alert("Hiện tại không có điểm rác nào cần thu gom!");
+        return;
+      }
+      if (isFleetMoving) return;
+
+      isFleetMoving = true;
+      document.getElementById('btnDispatch').disabled = true;
+      document.getElementById('txtDispatch').innerText = "ĐANG THU GOM RÁC...";
+      document.getElementById('hudTruckStatus').innerText = "EN_ROUTE";
+      document.getElementById('hudTruckStatus').style.color = "#38bdf8";
+      logMsg("🚀 Xe thu gom xuất phát từ Depot, lăn bánh theo tuyến 2-Opt!");
+
+      let currentPos = truckMarker.getLatLng();
+
+      for (let i = 0; i < currentWaypoints.length; i++) {
+        const targetWp = currentWaypoints[i];
+        const targetPos = { lat: targetWp.lat, lng: targetWp.lng };
+
+        const distKm = calcDistKm(currentPos, targetPos);
+        let travelDuration = Math.max(900, Math.min(3000, distKm * 1200));
+
+        // Nếu đi qua vùng tắc đường, xe di chuyển chậm lại
+        if (trafficCircle) {
+          const midLat = (currentPos.lat + targetPos.lat) / 2;
+          const midLng = (currentPos.lng + targetPos.lng) / 2;
+          const dToJam = calcDistKm({lat: midLat, lng: midLng}, {lat: 21.196, lng: 106.088});
+          if (dToJam <= 1.5) {
+            travelDuration *= 2.5;
+            logMsg("⚠️ [ÙN TẮC] Xe đang di chuyển chậm qua vùng tắc đường (vận tốc giảm 60%)...");
+          }
+        }
+
+        document.getElementById('hudTruckStatus').innerText = `EN_ROUTE (${i+1}/${currentWaypoints.length})`;
+        await animateMove(currentPos, targetPos, travelDuration);
+        currentPos = targetPos;
+
+        if (targetWp.bin_id > 0) {
+          const binObj = cachedBinsData.find(b => b.bin_id === targetWp.bin_id);
+          const wasteWeight = binObj ? (binObj.waste_weight_tons || 0.38) : 0.38;
+
+          // KIỂM TRA RÀNG BUỘC TẢI TRỌNG XE (CAPACITY CONSTRAINT)
+          if (currentTruckLoad + wasteWeight > maxCapacityTons) {
+            logMsg(`⚠️ [CẢNH BÁO QUÁ TẢI] Xe rác đã đầy tải (${currentTruckLoad.toFixed(2)}/5.00 Tấn)! Buộc quay về Depot xả rác trước khi thu gom tiếp!`);
+            document.getElementById('hudTruckStatus').innerText = "VỀ DEPOT (XẢ TẢI)";
+            document.getElementById('hudTruckStatus').style.color = "#f43f5e";
+
+            // Xe quay về Depot xả tải
+            const depotPos = depotMarker.getLatLng();
+            const distToDepot = calcDistKm(currentPos, depotPos);
+            await animateMove(currentPos, depotPos, Math.max(1000, distToDepot * 1200));
+            currentPos = depotPos;
+
+            // Xả rác tại Depot
+            document.getElementById('hudTruckStatus').innerText = "UNLOADING (Xả rác)";
+            logMsg(`🏭 Xe đang trút ${currentTruckLoad.toFixed(2)} tấn rác vào bãi ép trung tâm tại Depot...`);
+            await new Promise(r => setTimeout(r, 2000));
+            updatePayloadUI(0.0);
+            logMsg(`✅ Xả tải hoàn tất! Tải trọng xe đặt lại 0.00 Tấn. Tiếp tục hành trình tới Bin #${targetWp.bin_id}...`);
+
+            // Xe quay lại thùng cần gom
+            document.getElementById('hudTruckStatus').innerText = `EN_ROUTE (Tới Bin #${targetWp.bin_id})`;
+            document.getElementById('hudTruckStatus').style.color = "#38bdf8";
+            await animateMove(currentPos, targetPos, Math.max(1000, distToDepot * 1200));
+            currentPos = targetPos;
+          }
+
+          document.getElementById('hudTruckStatus').innerText = `ACTUATING (Bin #${targetWp.bin_id})`;
+          document.getElementById('hudTruckStatus').style.color = "#f43f5e";
+          logMsg(`🚚 Đã đến Bin #${targetWp.bin_id}. Hạ càng nâng, nạp +${wasteWeight} tấn rác vào xe...`);
+
+          await new Promise(r => setTimeout(r, 1500));
+
+          // Nạp rác vào xe và cập nhật tải trọng
+          updatePayloadUI(currentTruckLoad + wasteWeight);
+
+          // Gửi Actuator reset thùng về 0%
+          await fetch('/api/actuator/empty', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bin_id: targetWp.bin_id })
+          });
+
+          // Cập nhật marker trên map sang xanh (0%)
+          const cleanIcon = L.divIcon({
+            className: '',
+            html: `
+              <div class="bin-map-pin">
+                <div class="bin-pin-circle">#${targetWp.bin_id < 10 ? '0' + targetWp.bin_id : targetWp.bin_id}</div>
+                <div class="bin-pin-badge">0%</div>
+              </div>
+            `,
+            iconSize: [32, 44],
+            iconAnchor: [16, 22]
+          });
+          if (markers[targetWp.bin_id]) {
+            markers[targetWp.bin_id].setIcon(cleanIcon);
+          }
+          logMsg(`✅ Bin #${targetWp.bin_id} đã được dọn sạch về 0%! Tải trọng xe hiện tại: ${currentTruckLoad.toFixed(2)}/5.00 Tấn.`);
+        }
+      }
+
+      // Lưu kết quả vào CSDL lũy kế
+      const completedDist = parseFloat(document.getElementById('totalDist').innerText) || 0.0;
+      const collectedBins = currentWaypoints.filter(w => w.bin_id > 0).length;
+      try {
+        await fetch('/api/fleet/complete-route', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            total_distance_km: completedDist,
+            cleared_bins_count: collectedBins
+          })
+        });
+        logMsg(`📈 Đã ghi nhận chuyến đi (${completedDist} km) vào CSDL lũy kế!`);
+      } catch (err) {
+        console.error("Lỗi ghi nhận lộ trình:", err);
+      }
+
+      logMsg(`🏁 Xe đã hoàn thành toàn bộ lộ trình và quay trở về Depot an toàn! Trút toàn bộ ${currentTruckLoad.toFixed(2)} tấn rác vào bãi tập kết.`);
+      updatePayloadUI(0.0);
+
+      document.getElementById('hudTruckStatus').innerText = "IDLE";
+      document.getElementById('hudTruckStatus').style.color = "#facc15";
+      document.getElementById('btnDispatch').disabled = false;
+      document.getElementById('txtDispatch').innerText = "XUẤT XE THU GOM (2-OPT)";
+      isFleetMoving = false;
+
+      if (routePolyline) map.removeLayer(routePolyline);
+      fetchDashboardData();
+    }
+
+    setInterval(fetchDashboardData, 2000);
+    fetchDashboardData();
+  </script>
+</body>
+</html>
